@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const PLACES_API_URL =
-  "https://places.googleapis.com/v1/places:searchText";
+const PLACES_API_URL = "https://places.googleapis.com/v1/places:searchText";
 
 const FIELD_MASK = [
+  "places.id",
   "places.displayName",
   "places.formattedAddress",
   "places.internationalPhoneNumber",
@@ -12,12 +12,11 @@ const FIELD_MASK = [
   "places.userRatingCount",
   "places.businessStatus",
   "places.googleMapsUri",
-  "places.regularOpeningHours",
   "places.types",
-  "places.nextPageToken",
 ].join(",");
 
 export interface Place {
+  id: string;
   name: string;
   address: string;
   phone: string;
@@ -29,6 +28,21 @@ export interface Place {
   types: string[];
 }
 
+function mapPlace(p: Record<string, unknown>): Place {
+  return {
+    id: (p.id as string) ?? "",
+    name: (p.displayName as { text: string } | undefined)?.text ?? "",
+    address: (p.formattedAddress as string) ?? "",
+    phone: (p.internationalPhoneNumber as string) ?? "",
+    website: (p.websiteUri as string) ?? "",
+    rating: (p.rating as number) ?? null,
+    reviewCount: (p.userRatingCount as number) ?? null,
+    status: (p.businessStatus as string) ?? "",
+    mapsUrl: (p.googleMapsUri as string) ?? "",
+    types: (p.types as string[]) ?? [],
+  };
+}
+
 export async function POST(req: NextRequest) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
@@ -38,7 +52,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { businessType, location, pageToken } = await req.json();
+  const { businessType, location, maxLeads = 20 } = await req.json();
 
   if (!businessType || !location) {
     return NextResponse.json(
@@ -48,54 +62,50 @@ export async function POST(req: NextRequest) {
   }
 
   const query = `${businessType} in ${location}`;
+  const target = Math.min(Math.max(1, maxLeads), 100);
 
-  const body: Record<string, unknown> = {
-    textQuery: query,
-    languageCode: "en",
-    maxResultCount: 20,
-  };
+  const allPlaces: Place[] = [];
+  let pageToken: string | undefined = undefined;
+  let apiCallsMade = 0;
 
-  if (pageToken) {
-    body.pageToken = pageToken;
+  while (allPlaces.length < target) {
+    const body: Record<string, unknown> = {
+      textQuery: query,
+      languageCode: "en",
+      maxResultCount: Math.min(20, target - allPlaces.length),
+    };
+    if (pageToken) body.pageToken = pageToken;
+
+    const response = await fetch(PLACES_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": apiKey,
+        "X-Goog-FieldMask": FIELD_MASK,
+      },
+      body: JSON.stringify(body),
+    });
+
+    apiCallsMade++;
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return NextResponse.json(
+        { error: `Google API error: ${errText}` },
+        { status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    const batch: Place[] = (data.places ?? []).map(mapPlace);
+    allPlaces.push(...batch);
+
+    if (!data.nextPageToken || batch.length === 0) break;
+    pageToken = data.nextPageToken;
   }
-
-  const response = await fetch(PLACES_API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Goog-Api-Key": apiKey,
-      "X-Goog-FieldMask": FIELD_MASK,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    return NextResponse.json(
-      { error: `Google API error: ${errText}` },
-      { status: response.status }
-    );
-  }
-
-  const data = await response.json();
-
-  const places: Place[] = (data.places ?? []).map(
-    (p: Record<string, unknown>) => ({
-      name: (p.displayName as { text: string } | undefined)?.text ?? "",
-      address: (p.formattedAddress as string) ?? "",
-      phone: (p.internationalPhoneNumber as string) ?? "",
-      website: (p.websiteUri as string) ?? "",
-      rating: (p.rating as number) ?? null,
-      reviewCount: (p.userRatingCount as number) ?? null,
-      status: (p.businessStatus as string) ?? "",
-      mapsUrl: (p.googleMapsUri as string) ?? "",
-      types: (p.types as string[]) ?? [],
-    })
-  );
 
   return NextResponse.json({
-    places,
-    nextPageToken: data.nextPageToken ?? null,
-    total: places.length,
+    places: allPlaces.slice(0, target),
+    apiCallsMade,
   });
 }
