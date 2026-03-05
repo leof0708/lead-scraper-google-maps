@@ -27,6 +27,7 @@ export interface Place {
   status: string;
   mapsUrl: string;
   types: string[];
+  city?: string;
 }
 
 interface LocationBox {

@@ -6,16 +6,20 @@ export async function POST(req: NextRequest) {
   const { places, format }: { places: Place[]; format: "csv" | "xlsx" } =
     await req.json();
 
-  const rows = places.map((p) => ({
-    Name: p.name,
-    Address: p.address,
-    Phone: p.phone,
-    Website: p.website,
-    Rating: p.rating ?? "",
-    Reviews: p.reviewCount ?? "",
-    Status: p.status,
-    "Google Maps": p.mapsUrl,
-  }));
+  const hasCityColumn = places.some((p) => p.city);
+  const rows = places.map((p) => {
+    const row: Record<string, unknown> = {};
+    if (hasCityColumn) row["City"] = p.city ?? "";
+    row["Name"] = p.name;
+    row["Address"] = p.address;
+    row["Phone"] = p.phone;
+    row["Website"] = p.website;
+    row["Rating"] = p.rating ?? "";
+    row["Reviews"] = p.reviewCount ?? "";
+    row["Status"] = p.status;
+    row["Google Maps"] = p.mapsUrl;
+    return row;
+  });
 
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();

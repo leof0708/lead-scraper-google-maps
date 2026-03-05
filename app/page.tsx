@@ -73,7 +73,10 @@ function Badge({ children, variant }: { children: React.ReactNode; variant: "new
 }
 
 function placeToTsv(place: Place): string {
-  return [place.name, place.address, place.phone, place.website].join("\t");
+  const cols = place.city
+    ? [place.city, place.name, place.address, place.phone, place.website]
+    : [place.name, place.address, place.phone, place.website];
+  return cols.join("\t");
 }
 
 function CopyButton({ place }: { place: Place }) {
@@ -178,10 +181,12 @@ export default function Home() {
   const [exportNewOnly, setExportNewOnly] = useState(true);
   const [monthlyUsed, setMonthlyUsed] = useState(0);
 
-  // Multi-area progress
+  // Multi-area / multi-city progress
+  const [multiCity, setMultiCity] = useState(false);
   const [phase, setPhase] = useState("");
   const [areaProgress, setAreaProgress] = useState<{ current: number; total: number } | null>(null);
   const [searchRadiusKm, setSearchRadiusKm] = useState<number | null>(null);
+  const [cityProgress, setCityProgress] = useState<{ current: number; total: number; name: string } | null>(null);
 
   // Abort ref so we can cancel mid-search
   const abortRef = useRef(false);
@@ -203,38 +208,40 @@ export default function Home() {
 
   // ── Single-area search (≤ 60 leads) ────────────────────────────────────────
   async function searchSingleArea(
+    city: string,
     target: number,
     usageRef: { calls: number }
   ): Promise<Place[]> {
     const res = await fetch("/api/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ businessType, location, maxLeads: target }),
+      body: JSON.stringify({ businessType, location: city, maxLeads: target }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error ?? "Search failed");
     usageRef.calls += data.apiCallsMade;
-    return data.places as Place[];
+    return (data.places as Place[]).map((p) => ({ ...p, city }));
   }
 
   // ── Multi-area search (> 60 leads) ─────────────────────────────────────────
   async function searchMultiArea(
+    city: string,
     target: number,
-    usageRef: { calls: number }
-  ): Promise<Place[]> {
+    usageRef: { calls: number },
+    globalSeen: Set<string>,
+    accumulated: Place[]
+  ): Promise<void> {
     setPhase("Getting city areas…");
     const areasRes = await fetch("/api/areas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ location, maxLeads: target }),
+      body: JSON.stringify({ location: city, maxLeads: target }),
     });
     const areasData = await areasRes.json();
     if (!areasRes.ok) throw new Error(areasData.error ?? "Could not get city areas");
 
     const cells: Cell[] = areasData.cells;
     if (areasData.radiusKm) setSearchRadiusKm(areasData.radiusKm);
-    const seen = new Set<string>();
-    const accumulated: Place[] = [];
 
     setAreaProgress({ current: 0, total: cells.length });
 
@@ -251,7 +258,7 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           businessType,
-          location,
+          location: city,
           maxLeads: Math.min(needed, 60),
           locationBox: cells[i],
         }),
@@ -261,19 +268,15 @@ export default function Home() {
 
       usageRef.calls += data.apiCallsMade;
 
-      // Deduplicate across areas
       for (const p of data.places as Place[]) {
-        if (!seen.has(p.id)) {
-          seen.add(p.id);
-          accumulated.push(p);
+        if (!globalSeen.has(p.id)) {
+          globalSeen.add(p.id);
+          accumulated.push({ ...p, city });
         }
       }
 
-      // Stream results into UI progressively
       setPlaces([...accumulated]);
     }
-
-    return accumulated;
   }
 
   // ── Main handler ───────────────────────────────────────────────────────────
@@ -281,10 +284,16 @@ export default function Home() {
     e.preventDefault();
     if (!businessType.trim() || !location.trim() || limitReached) return;
 
+    const cities = multiCity
+      ? location.split("\n").map((s) => s.trim()).filter(Boolean)
+      : [location.trim()];
+    if (!cities.length) return;
+
     const target = maxLeads || 20;
-    const estimatedCalls = target <= 60
+    const callsPerCity = target <= 60
       ? Math.ceil(target / 20)
-      : Math.ceil(target / 20) + 1; // +1 for the areas call
+      : Math.ceil(target / 20) + 1;
+    const estimatedCalls = callsPerCity * cities.length;
 
     if (estimatedCalls > remaining) {
       setError(`This search needs ~${estimatedCalls} API calls but you only have ${remaining} left this month.`);
@@ -300,20 +309,35 @@ export default function Home() {
     setAreaProgress(null);
     setSearchRadiusKm(null);
     setPhase("");
+    setCityProgress(null);
 
     const usageRef = { calls: 0 };
+    const globalSeen = new Set<string>();
+    const accumulated: Place[] = [];
 
     try {
-      let results: Place[];
+      for (let i = 0; i < cities.length; i++) {
+        if (abortRef.current) break;
+        const city = cities[i];
+        if (cities.length > 1) {
+          setCityProgress({ current: i + 1, total: cities.length, name: city });
+        }
 
-      if (target <= 60) {
-        setPhase("Searching…");
-        results = await searchSingleArea(target, usageRef);
-      } else {
-        results = await searchMultiArea(target, usageRef);
+        if (target <= 60) {
+          setPhase("Searching…");
+          const results = await searchSingleArea(city, target, usageRef);
+          for (const p of results) {
+            if (!globalSeen.has(p.id)) {
+              globalSeen.add(p.id);
+              accumulated.push(p);
+            }
+          }
+          setPlaces([...accumulated]);
+        } else {
+          await searchMultiArea(city, target, usageRef, globalSeen, accumulated);
+        }
       }
 
-      setPlaces(results);
       setTotalApiCalls(usageRef.calls);
       setSearched(true);
 
@@ -326,6 +350,7 @@ export default function Home() {
       setLoading(false);
       setPhase("");
       setAreaProgress(null);
+      setCityProgress(null);
     }
   }
 
@@ -334,6 +359,7 @@ export default function Home() {
     setLoading(false);
     setPhase("");
     setAreaProgress(null);
+    setCityProgress(null);
     setSearched(true);
   }
 
@@ -368,6 +394,11 @@ export default function Home() {
     a.click();
     URL.revokeObjectURL(url);
   }
+
+  const parsedCities = multiCity
+    ? location.split("\n").map((s) => s.trim()).filter(Boolean)
+    : location.trim() ? [location.trim()] : [];
+  const cityCount = parsedCities.length || 1;
 
   const inputClass =
     "w-full bg-[#130707] border border-[#2d1212] rounded-lg px-4 py-3 text-[#f0e0e0] placeholder-[#5a3535] focus:outline-none focus:ring-2 focus:ring-red-900 focus:border-red-800 transition-colors";
@@ -447,20 +478,52 @@ export default function Home() {
                   placeholder="e.g. plumber, dentist, gym" className={inputClass} required />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-[#7a5050] uppercase tracking-wider mb-2">
-                  City, Country
-                </label>
-                <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. Paris, France" className={inputClass} required />
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-[#7a5050] uppercase tracking-wider">
+                    City, Country
+                  </label>
+                  <div className="flex rounded-md overflow-hidden border border-[#2d1212] text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setMultiCity(false)}
+                      className={`px-2.5 py-1 transition-colors ${!multiCity ? "bg-red-900/50 text-red-200" : "bg-[#130707] text-[#5a3535] hover:text-[#9d6060]"}`}
+                    >
+                      Single
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMultiCity(true)}
+                      className={`px-2.5 py-1 transition-colors border-l border-[#2d1212] ${multiCity ? "bg-red-900/50 text-red-200" : "bg-[#130707] text-[#5a3535] hover:text-[#9d6060]"}`}
+                    >
+                      Multi-city
+                    </button>
+                  </div>
+                </div>
+                {multiCity ? (
+                  <textarea
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder={"One city per line\ne.g. Paris, France\n     Lyon, France"}
+                    rows={4}
+                    className={inputClass + " resize-none"}
+                    required
+                  />
+                ) : (
+                  <input type="text" value={location} onChange={(e) => setLocation(e.target.value)}
+                    placeholder="e.g. Paris, France" className={inputClass} required />
+                )}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[#7a5050] uppercase tracking-wider mb-2">
                   Number of Leads
                   {maxLeads && Number(maxLeads) > 0 && (
                     <span className={`ml-2 normal-case font-normal ${
-                      Math.ceil(Number(maxLeads) / 20) > remaining ? "text-red-500" : "text-[#5a3535]"
+                      Math.ceil(Number(maxLeads) / 20) * cityCount > remaining ? "text-red-500" : "text-[#5a3535]"
                     }`}>
                       — ≈ {Math.ceil(Number(maxLeads) / 20)} API call{Math.ceil(Number(maxLeads) / 20) !== 1 ? "s" : ""}
+                      {multiCity && cityCount > 1 && (
+                        <> × {cityCount} cities = {Math.ceil(Number(maxLeads) / 20) * cityCount} total</>
+                      )}
                       {Number(maxLeads) > 60 && (
                         <span className="text-red-700/80">
                           {" "}· splits into {
@@ -544,6 +607,17 @@ export default function Home() {
         {/* ── Progress indicator ── */}
         {loading && (
           <div className="bg-[#130707] border border-[#2d1212] rounded-xl px-5 py-4 mb-6">
+            {cityProgress && cityProgress.total > 1 && (
+              <div className="mb-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-[#7a5050] uppercase tracking-wider">
+                    City {cityProgress.current} / {cityProgress.total}
+                    <span className="text-[#9d7070] ml-2 normal-case tracking-normal">· {cityProgress.name}</span>
+                  </span>
+                </div>
+                <ProgressBar current={cityProgress.current} total={cityProgress.total} />
+              </div>
+            )}
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm text-[#c0a0a0] flex items-center gap-2">
                 <svg className="w-3.5 h-3.5 animate-spin text-red-700" fill="none" viewBox="0 0 24 24">
@@ -588,6 +662,11 @@ export default function Home() {
                       <div className="flex flex-wrap items-center gap-2 mb-2">
                         <h2 className="text-base font-semibold text-white truncate">{place.name}</h2>
                         <Badge variant={alreadySaved ? "dup" : "new"}>{alreadySaved ? "In DB" : "New"}</Badge>
+                        {place.city && (
+                          <span className="shrink-0 text-xs px-2 py-0.5 rounded-full font-medium bg-[#0a1020] text-blue-400/80 border border-blue-900/30">
+                            {place.city}
+                          </span>
+                        )}
                         {place.status === "OPERATIONAL" && <Badge variant="open">Open</Badge>}
                         {place.status && place.status !== "OPERATIONAL" && (
                           <Badge variant="status">{place.status.replace(/_/g, " ")}</Badge>
