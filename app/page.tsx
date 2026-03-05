@@ -3,8 +3,13 @@
 import { useState, useEffect } from "react";
 import { Place } from "./api/search/route";
 
+// ── Constants ────────────────────────────────────────────────────────────────
 const DB_KEY = "leads_db_v1";
+const USAGE_KEY = "api_usage_v1";
+const FREE_LIMIT = 5000;
+const WARN_AT = 4000; // 80 %
 
+// ── localStorage helpers ─────────────────────────────────────────────────────
 function loadDb(): Set<string> {
   try {
     const raw = localStorage.getItem(DB_KEY);
@@ -13,11 +18,29 @@ function loadDb(): Set<string> {
     return new Set();
   }
 }
-
 function saveDb(db: Set<string>) {
   localStorage.setItem(DB_KEY, JSON.stringify([...db]));
 }
 
+function currentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function loadUsage(): number {
+  try {
+    const raw = localStorage.getItem(USAGE_KEY);
+    if (!raw) return 0;
+    const { month, calls } = JSON.parse(raw);
+    return month === currentMonth() ? (calls as number) : 0;
+  } catch {
+    return 0;
+  }
+}
+function saveUsage(calls: number) {
+  localStorage.setItem(USAGE_KEY, JSON.stringify({ month: currentMonth(), calls }));
+}
+
+// ── Components ───────────────────────────────────────────────────────────────
 function StarRating({ rating }: { rating: number }) {
   const full = Math.floor(rating);
   const half = rating % 1 >= 0.5;
@@ -31,6 +54,25 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
+function UsageBar({ used }: { used: number }) {
+  const pct = Math.min((used / FREE_LIMIT) * 100, 100);
+  const color =
+    used >= FREE_LIMIT
+      ? "bg-red-500"
+      : used >= WARN_AT
+      ? "bg-yellow-500"
+      : "bg-blue-500";
+  return (
+    <div className="w-full bg-gray-800 rounded-full h-1.5 mt-2">
+      <div
+        className={`${color} h-1.5 rounded-full transition-all duration-500`}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function Home() {
   const [businessType, setBusinessType] = useState("");
   const [location, setLocation] = useState("");
@@ -43,23 +85,37 @@ export default function Home() {
   const [db, setDb] = useState<Set<string>>(new Set());
   const [dbCount, setDbCount] = useState(0);
   const [exportNewOnly, setExportNewOnly] = useState(true);
+  const [monthlyUsed, setMonthlyUsed] = useState(0);
 
   useEffect(() => {
     const loaded = loadDb();
     setDb(loaded);
     setDbCount(loaded.size);
+    setMonthlyUsed(loadUsage());
   }, []);
+
+  const remaining = FREE_LIMIT - monthlyUsed;
+  const limitReached = monthlyUsed >= FREE_LIMIT;
+  const nearLimit = monthlyUsed >= WARN_AT && !limitReached;
 
   function isNew(place: Place) {
     return !db.has(place.id);
   }
-
   const newLeads = places.filter(isNew);
   const dupLeads = places.filter((p) => !isNew(p));
 
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (!businessType.trim() || !location.trim()) return;
+    if (!businessType.trim() || !location.trim() || limitReached) return;
+
+    const needed = Math.ceil((maxLeads || 20) / 20);
+    if (needed > remaining) {
+      setError(
+        `This search needs ~${needed} API calls but you only have ${remaining} left this month.`
+      );
+      return;
+    }
+
     setLoading(true);
     setError("");
     setPlaces([]);
@@ -74,9 +130,14 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Search failed");
+
       setPlaces(data.places);
       setApiCallsMade(data.apiCallsMade);
       setSearched(true);
+
+      const newTotal = monthlyUsed + data.apiCallsMade;
+      saveUsage(newTotal);
+      setMonthlyUsed(newTotal);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -119,8 +180,9 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-950 text-gray-100">
       <div className="max-w-7xl mx-auto px-4 py-12">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-10">
+
+        {/* Header row */}
+        <div className="flex items-start justify-between mb-10 gap-6">
           <div>
             <h1 className="text-4xl font-bold text-white mb-2">
               Google Maps Lead Scraper
@@ -129,20 +191,69 @@ export default function Home() {
               Find business leads using the official Google Places API
             </p>
           </div>
-          {/* DB Status */}
-          <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 text-right">
-            <div className="text-xs text-gray-500 mb-0.5">Leads in database</div>
-            <div className="text-2xl font-bold text-white">{dbCount.toLocaleString()}</div>
-            {dbCount > 0 && (
-              <button
-                onClick={handleClearDb}
-                className="text-xs text-red-500 hover:text-red-400 mt-1 transition-colors"
+
+          {/* Stats panel */}
+          <div className="flex gap-3 shrink-0">
+            {/* API usage */}
+            <div
+              className={`bg-gray-900 border rounded-xl px-5 py-3 text-right min-w-[160px] ${
+                limitReached
+                  ? "border-red-700"
+                  : nearLimit
+                  ? "border-yellow-700"
+                  : "border-gray-800"
+              }`}
+            >
+              <div className="text-xs text-gray-500 mb-0.5">API calls this month</div>
+              <div
+                className={`text-2xl font-bold ${
+                  limitReached
+                    ? "text-red-400"
+                    : nearLimit
+                    ? "text-yellow-400"
+                    : "text-white"
+                }`}
               >
-                Clear DB
-              </button>
-            )}
+                {monthlyUsed.toLocaleString()}
+                <span className="text-sm font-normal text-gray-600">
+                  {" "}/ {FREE_LIMIT.toLocaleString()}
+                </span>
+              </div>
+              <UsageBar used={monthlyUsed} />
+              <div className="text-xs text-gray-600 mt-1">
+                {limitReached
+                  ? "Limit reached — resets 1st of next month"
+                  : `${remaining.toLocaleString()} calls remaining`}
+              </div>
+            </div>
+
+            {/* Leads DB */}
+            <div className="bg-gray-900 border border-gray-800 rounded-xl px-5 py-3 text-right min-w-[130px]">
+              <div className="text-xs text-gray-500 mb-0.5">Leads in database</div>
+              <div className="text-2xl font-bold text-white">{dbCount.toLocaleString()}</div>
+              {dbCount > 0 && (
+                <button
+                  onClick={handleClearDb}
+                  className="text-xs text-red-500 hover:text-red-400 mt-1 transition-colors"
+                >
+                  Clear DB
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Warning banners */}
+        {limitReached && (
+          <div className="bg-red-900/40 border border-red-700 text-red-300 rounded-xl p-4 mb-6">
+            Monthly free limit of 5,000 API calls reached. Searches are blocked until the 1st of next month.
+          </div>
+        )}
+        {nearLimit && (
+          <div className="bg-yellow-900/30 border border-yellow-700/60 text-yellow-300 rounded-xl p-4 mb-6">
+            Warning: {remaining} API calls remaining this month ({FREE_LIMIT.toLocaleString()} free limit). Use them wisely.
+          </div>
+        )}
 
         {/* Search Form */}
         <form
@@ -180,8 +291,13 @@ export default function Home() {
               <label className="block text-sm font-medium text-gray-400 mb-1">
                 Number of Leads
                 {maxLeads && Number(maxLeads) > 0 && (
-                  <span className="text-gray-600 font-normal ml-2">
+                  <span className={`font-normal ml-2 ${
+                    Math.ceil(Number(maxLeads) / 20) > remaining
+                      ? "text-red-500"
+                      : "text-gray-600"
+                  }`}>
                     ≈ {Math.ceil(Number(maxLeads) / 20)} API call{Math.ceil(Number(maxLeads) / 20) !== 1 ? "s" : ""}
+                    {Math.ceil(Number(maxLeads) / 20) > remaining && " — exceeds remaining quota"}
                   </span>
                 )}
               </label>
@@ -199,13 +315,14 @@ export default function Home() {
               />
             </div>
           </div>
+
           <div className="flex flex-wrap items-center gap-3">
             <button
               type="submit"
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 disabled:cursor-not-allowed text-white font-semibold px-8 py-3 rounded-lg transition-colors"
+              disabled={loading || limitReached}
+              className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white font-semibold px-8 py-3 rounded-lg transition-colors"
             >
-              {loading ? "Searching..." : "Search"}
+              {loading ? "Searching..." : limitReached ? "Limit Reached" : "Search"}
             </button>
 
             {places.length > 0 && (
