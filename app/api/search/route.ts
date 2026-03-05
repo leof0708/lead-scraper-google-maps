@@ -77,11 +77,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const query = `${businessType} in ${location}`;
-  // When using a locationBox, cap per-cell at 60 (Google's hard limit per query)
-  const target = locationBox
-    ? Math.min(Math.max(1, maxLeads), 60)
-    : Math.min(Math.max(1, maxLeads), 60);
+  // When searching by area cell, use just the business type — the locationBias
+  // rectangle already handles geography. Including "in {city}" alongside a
+  // rectangle bias sends conflicting signals and reduces result count.
+  const query = locationBox ? businessType : `${businessType} in ${location}`;
+  const target = Math.min(Math.max(1, maxLeads), 60);
 
   const allPlaces: Place[] = [];
   let pageToken: string | undefined = undefined;
@@ -94,10 +94,13 @@ export async function POST(req: NextRequest) {
       maxResultCount: Math.min(20, target - allPlaces.length),
     };
 
-    if (pageToken) body.pageToken = pageToken;
-
-    if (locationBox) {
-      body.locationRestriction = {
+    if (pageToken) {
+      // On paginated requests pageToken re-uses original params — don't resend locationBias
+      body.pageToken = pageToken;
+    } else if (locationBox) {
+      // locationBias (soft) instead of locationRestriction (hard) — returns more results
+      // and avoids cutting off businesses that sit exactly on a cell border
+      body.locationBias = {
         rectangle: {
           low: { latitude: locationBox.low.lat, longitude: locationBox.low.lng },
           high: { latitude: locationBox.high.lat, longitude: locationBox.high.lng },
