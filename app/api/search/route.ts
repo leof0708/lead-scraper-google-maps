@@ -13,6 +13,7 @@ const FIELD_MASK = [
   "places.businessStatus",
   "places.googleMapsUri",
   "places.types",
+  "nextPageToken",
 ].join(",");
 
 export interface Place {
