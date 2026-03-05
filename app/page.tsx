@@ -72,19 +72,17 @@ function Badge({ children, variant }: { children: React.ReactNode; variant: "new
   );
 }
 
+function placeToTsv(place: Place): string {
+  return [place.name, place.address, place.phone, place.website].join("\t");
+}
+
 function CopyButton({ place }: { place: Place }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    const lines = [
-      place.name,
-      place.address && `Address: ${place.address}`,
-      place.phone   && `Phone: ${place.phone}`,
-      place.website && `Website: ${place.website}`,
-      place.mapsUrl && `Maps: ${place.mapsUrl}`,
-    ].filter(Boolean).join("\n");
+    const lines = placeToTsv(place);
 
-    navigator.clipboard.writeText(lines).then(() => {
+    navigator.clipboard.writeText(lines as string).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
@@ -120,15 +118,7 @@ function CopyAllButton({ places }: { places: Place[] }) {
 
   function handleCopy() {
     if (!places.length) return;
-    const text = places.map((p) =>
-      [
-        p.name,
-        p.address && `Address: ${p.address}`,
-        p.phone   && `Phone: ${p.phone}`,
-        p.website && `Website: ${p.website}`,
-        p.mapsUrl && `Maps: ${p.mapsUrl}`,
-      ].filter(Boolean).join("\n")
-    ).join("\n\n");
+    const text = places.map(placeToTsv).join("\n");
 
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
