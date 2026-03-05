@@ -72,6 +72,95 @@ function Badge({ children, variant }: { children: React.ReactNode; variant: "new
   );
 }
 
+function CopyButton({ place }: { place: Place }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    const lines = [
+      place.name,
+      place.address && `Address: ${place.address}`,
+      place.phone   && `Phone: ${place.phone}`,
+      place.website && `Website: ${place.website}`,
+      place.mapsUrl && `Maps: ${place.mapsUrl}`,
+    ].filter(Boolean).join("\n");
+
+    navigator.clipboard.writeText(lines).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      title="Copy to clipboard"
+      className="shrink-0 bg-[#1a0808] hover:bg-[#220d0d] text-[#9d6060] hover:text-red-300 text-xs font-medium px-3 py-2 rounded-lg transition-all border border-[#2d1212] hover:border-[#4d2020] flex items-center gap-1.5 self-start"
+    >
+      {copied ? (
+        <>
+          <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="text-emerald-400">Copied</span>
+        </>
+      ) : (
+        <>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Copy
+        </>
+      )}
+    </button>
+  );
+}
+
+function CopyAllButton({ places }: { places: Place[] }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!places.length) return;
+    const text = places.map((p) =>
+      [
+        p.name,
+        p.address && `Address: ${p.address}`,
+        p.phone   && `Phone: ${p.phone}`,
+        p.website && `Website: ${p.website}`,
+        p.mapsUrl && `Maps: ${p.mapsUrl}`,
+      ].filter(Boolean).join("\n")
+    ).join("\n\n");
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className="bg-[#1a0a0a] hover:bg-[#220d0d] text-[#c0a0a0] hover:text-white font-medium px-4 py-2.5 rounded-lg transition-all text-sm border border-[#2d1212] hover:border-[#4d2020] flex items-center gap-1.5"
+    >
+      {copied ? (
+        <>
+          <svg className="w-3.5 h-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="text-emerald-400">Copied!</span>
+        </>
+      ) : (
+        <>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+          Copy all
+        </>
+      )}
+    </button>
+  );
+}
+
 function ProgressBar({ current, total }: { current: number; total: number }) {
   const pct = total > 0 ? Math.round((current / total) * 100) : 0;
   return (
@@ -426,6 +515,7 @@ export default function Home() {
                       Save {newLeads.length} new to DB
                     </button>
                   )}
+                  <CopyAllButton places={exportNewOnly ? newLeads : places} />
                   <label className="flex items-center gap-2 text-sm text-[#7a5050] cursor-pointer select-none ml-1">
                     <input type="checkbox" checked={exportNewOnly} onChange={(e) => setExportNewOnly(e.target.checked)}
                       className="accent-red-800 w-3.5 h-3.5" />
@@ -548,13 +638,16 @@ export default function Home() {
                         )}
                       </div>
                     </div>
-                    <a href={place.mapsUrl} target="_blank" rel="noopener noreferrer"
-                      className="shrink-0 bg-[#1a0808] hover:bg-[#220d0d] text-[#9d6060] hover:text-red-300 text-xs font-medium px-4 py-2 rounded-lg transition-all border border-[#2d1212] hover:border-[#4d2020] whitespace-nowrap flex items-center gap-1.5 self-start">
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                      Maps
-                    </a>
+                    <div className="flex flex-col gap-2 self-start">
+                      <CopyButton place={place} />
+                      <a href={place.mapsUrl} target="_blank" rel="noopener noreferrer"
+                        className="shrink-0 bg-[#1a0808] hover:bg-[#220d0d] text-[#9d6060] hover:text-red-300 text-xs font-medium px-3 py-2 rounded-lg transition-all border border-[#2d1212] hover:border-[#4d2020] whitespace-nowrap flex items-center gap-1.5">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        Maps
+                      </a>
+                    </div>
                   </div>
                 </div>
               );
