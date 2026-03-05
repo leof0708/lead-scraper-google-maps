@@ -8,8 +8,9 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Google Maps Lead Scraper",
+  title: "Lead Scraper",
   description: "Find business leads using the official Google Places API",
+  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Dark burgundy background -->
+  <rect width="32" height="32" rx="7" fill="#130707"/>
+
+  <!-- Location pin body -->
+  <path
+    d="M16 4C11.58 4 8 7.58 8 12c0 6.5 8 16 8 16s8-9.5 8-16c0-4.42-3.58-8-8-8z"
+    fill="#9b1c1c"
+  />
+
+  <!-- Pin highlight — top-left inner glow -->
+  <path
+    d="M16 4C11.58 4 8 7.58 8 12c0 1.2.22 2.35.6 3.4C10.1 9.6 12.7 6.5 16 6c2.8-.42 5.4.8 7 2.9C22.2 5.5 19.38 4 16 4z"
+    fill="#c0302a"
+    opacity="0.5"
+  />
+
+  <!-- Inner circle (hole) -->
+  <circle cx="16" cy="12" r="3.2" fill="#130707"/>
+</svg>
