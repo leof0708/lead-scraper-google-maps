@@ -6,6 +6,9 @@ export interface Cell {
   label: string;
 }
 
+// Fixed search radius in km — covers well beyond most city limits
+const RADIUS_KM = 27;
+
 export async function POST(req: NextRequest) {
   const { location, maxLeads } = await req.json();
 
@@ -30,18 +33,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const [minLat, maxLat, minLon, maxLon] = (data[0].boundingbox as string[]).map(Number);
+  // Use the city center point, not the bounding box
+  const centerLat = parseFloat(data[0].lat);
+  const centerLng = parseFloat(data[0].lon);
 
-  // Expand the bounding box by 25% in every direction so we capture
-  // businesses in suburbs and areas just outside the city boundary.
-  const latPad = (maxLat - minLat) * 0.25;
-  const lonPad = (maxLon - minLon) * 0.25;
-  const eLat0 = minLat - latPad;
-  const eLat1 = maxLat + latPad;
-  const eLon0 = minLon - lonPad;
-  const eLon1 = maxLon + lonPad;
+  // Convert km radius to degrees
+  // 1° latitude ≈ 111 km everywhere
+  // 1° longitude ≈ 111 km × cos(lat) — shrinks toward the poles
+  const latDelta = RADIUS_KM / 111.0;
+  const lngDelta = RADIUS_KM / (111.0 * Math.cos(centerLat * (Math.PI / 180)));
 
-  // Each cell yields up to 60 results. Pick the smallest grid that can hold maxLeads.
+  const eLat0 = centerLat - latDelta;
+  const eLat1 = centerLat + latDelta;
+  const eLon0 = centerLng - lngDelta;
+  const eLon1 = centerLng + lngDelta;
+
+  // Each cell yields up to 60 results. Pick the smallest grid that covers maxLeads.
   // 1×1 → 60, 2×2 → 240, 3×3 → 540, 4×4 → 960
   const gridSize =
     maxLeads <= 60 ? 1 : maxLeads <= 240 ? 2 : maxLeads <= 540 ? 3 : 4;

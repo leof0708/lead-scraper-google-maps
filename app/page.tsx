@@ -167,7 +167,7 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 export default function Home() {
   const [businessType, setBusinessType] = useState("");
   const [location, setLocation] = useState("");
-  const [maxLeads, setMaxLeads] = useState<number | "">(20);
+  const [maxLeads, setMaxLeads] = useState<number | "">(500);
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
