@@ -6,8 +6,8 @@ export interface Cell {
   label: string;
 }
 
-// Fixed search radius in km — covers well beyond most city limits
-const RADIUS_KM = 27;
+// Extra km added beyond the city boundary in every direction
+const BUFFER_KM = 10;
 
 export async function POST(req: NextRequest) {
   const { location, maxLeads } = await req.json();
@@ -33,15 +33,22 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Use the city center point, not the bounding box
-  const centerLat = parseFloat(data[0].lat);
-  const centerLng = parseFloat(data[0].lon);
+  const [minLat, maxLat, minLon, maxLon] = (data[0].boundingbox as string[]).map(Number);
+  const centerLat = (minLat + maxLat) / 2;
+  const centerLng = (minLon + maxLon) / 2;
 
-  // Convert km radius to degrees
-  // 1° latitude ≈ 111 km everywhere
-  // 1° longitude ≈ 111 km × cos(lat) — shrinks toward the poles
-  const latDelta = RADIUS_KM / 111.0;
-  const lngDelta = RADIUS_KM / (111.0 * Math.cos(centerLat * (Math.PI / 180)));
+  // Measure actual city size in km
+  const latKm = (maxLat - minLat) * 111.0;
+  const lngKm = (maxLon - minLon) * 111.0 * Math.cos(centerLat * (Math.PI / 180));
+
+  // Radius = half the diagonal of the bounding box + buffer
+  // This is the minimum circle that fully contains the city rectangle
+  const halfDiagonalKm = Math.sqrt((latKm / 2) ** 2 + (lngKm / 2) ** 2);
+  const radiusKm = halfDiagonalKm + BUFFER_KM;
+
+  // Convert radius to degrees
+  const latDelta = radiusKm / 111.0;
+  const lngDelta = radiusKm / (111.0 * Math.cos(centerLat * (Math.PI / 180)));
 
   const eLat0 = centerLat - latDelta;
   const eLat1 = centerLat + latDelta;
@@ -74,5 +81,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ cells });
+  return NextResponse.json({ cells, radiusKm: Math.round(radiusKm) });
 }

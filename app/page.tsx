@@ -181,6 +181,7 @@ export default function Home() {
   // Multi-area progress
   const [phase, setPhase] = useState("");
   const [areaProgress, setAreaProgress] = useState<{ current: number; total: number } | null>(null);
+  const [searchRadiusKm, setSearchRadiusKm] = useState<number | null>(null);
 
   // Abort ref so we can cancel mid-search
   const abortRef = useRef(false);
@@ -231,6 +232,7 @@ export default function Home() {
     if (!areasRes.ok) throw new Error(areasData.error ?? "Could not get city areas");
 
     const cells: Cell[] = areasData.cells;
+    if (areasData.radiusKm) setSearchRadiusKm(areasData.radiusKm);
     const seen = new Set<string>();
     const accumulated: Place[] = [];
 
@@ -296,6 +298,7 @@ export default function Home() {
     setSearched(false);
     setTotalApiCalls(0);
     setAreaProgress(null);
+    setSearchRadiusKm(null);
     setPhase("");
 
     const usageRef = { calls: 0 };
@@ -549,11 +552,12 @@ export default function Home() {
                 </svg>
                 {phase}
               </span>
-              {areaProgress && (
-                <span className="text-xs text-[#5a3535]">
-                  {areaProgress.current} / {areaProgress.total} areas
-                </span>
-              )}
+              <div className="flex items-center gap-3 text-xs text-[#5a3535]">
+                {searchRadiusKm && <span>{searchRadiusKm} km radius</span>}
+                {areaProgress && (
+                  <span>{areaProgress.current} / {areaProgress.total} areas</span>
+                )}
+              </div>
             </div>
             {areaProgress && (
               <ProgressBar current={areaProgress.current} total={areaProgress.total} />
