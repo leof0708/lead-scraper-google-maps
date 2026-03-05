@@ -34,7 +34,7 @@ function StarRating({ rating }: { rating: number }) {
 export default function Home() {
   const [businessType, setBusinessType] = useState("");
   const [location, setLocation] = useState("");
-  const [maxLeads, setMaxLeads] = useState(20);
+  const [maxLeads, setMaxLeads] = useState<number | "">(20);
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -70,7 +70,7 @@ export default function Home() {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ businessType, location, maxLeads }),
+        body: JSON.stringify({ businessType, location, maxLeads: maxLeads || 20 }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Search failed");
@@ -179,18 +179,24 @@ export default function Home() {
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1">
                 Number of Leads
+                {maxLeads && Number(maxLeads) > 0 && (
+                  <span className="text-gray-600 font-normal ml-2">
+                    ≈ {Math.ceil(Number(maxLeads) / 20)} API call{Math.ceil(Number(maxLeads) / 20) !== 1 ? "s" : ""}
+                  </span>
+                )}
               </label>
-              <select
+              <input
+                type="number"
+                min={1}
+                max={500}
                 value={maxLeads}
-                onChange={(e) => setMaxLeads(Number(e.target.value))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                <option value={20}>20 leads (1 API call)</option>
-                <option value={40}>40 leads (2 API calls)</option>
-                <option value={60}>60 leads (3 API calls)</option>
-                <option value={80}>80 leads (4 API calls)</option>
-                <option value={100}>100 leads (5 API calls)</option>
-              </select>
+                onChange={(e) =>
+                  setMaxLeads(e.target.value === "" ? "" : Number(e.target.value))
+                }
+                placeholder="e.g. 200"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                required
+              />
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-3">

@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
   }
 
   const query = `${businessType} in ${location}`;
-  const target = Math.min(Math.max(1, maxLeads), 100);
+  const target = Math.min(Math.max(1, maxLeads), 500);
 
   const allPlaces: Place[] = [];
   let pageToken: string | undefined = undefined;
