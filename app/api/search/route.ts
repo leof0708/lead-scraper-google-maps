@@ -29,6 +29,11 @@ export interface Place {
   types: string[];
 }
 
+interface LocationBox {
+  low: { lat: number; lng: number };
+  high: { lat: number; lng: number };
+}
+
 function mapPlace(p: Record<string, unknown>): Place {
   return {
     id: (p.id as string) ?? "",
@@ -53,7 +58,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { businessType, location, maxLeads = 20 } = await req.json();
+  const {
+    businessType,
+    location,
+    maxLeads = 20,
+    locationBox,
+  }: {
+    businessType: string;
+    location: string;
+    maxLeads?: number;
+    locationBox?: LocationBox;
+  } = await req.json();
 
   if (!businessType || !location) {
     return NextResponse.json(
@@ -63,7 +78,10 @@ export async function POST(req: NextRequest) {
   }
 
   const query = `${businessType} in ${location}`;
-  const target = Math.min(Math.max(1, maxLeads), 500);
+  // When using a locationBox, cap per-cell at 60 (Google's hard limit per query)
+  const target = locationBox
+    ? Math.min(Math.max(1, maxLeads), 60)
+    : Math.min(Math.max(1, maxLeads), 60);
 
   const allPlaces: Place[] = [];
   let pageToken: string | undefined = undefined;
@@ -75,7 +93,17 @@ export async function POST(req: NextRequest) {
       languageCode: "en",
       maxResultCount: Math.min(20, target - allPlaces.length),
     };
+
     if (pageToken) body.pageToken = pageToken;
+
+    if (locationBox) {
+      body.locationRestriction = {
+        rectangle: {
+          low: { latitude: locationBox.low.lat, longitude: locationBox.low.lng },
+          high: { latitude: locationBox.high.lat, longitude: locationBox.high.lng },
+        },
+      };
+    }
 
     const response = await fetch(PLACES_API_URL, {
       method: "POST",
