@@ -94,12 +94,9 @@ export async function POST(req: NextRequest) {
       maxResultCount: Math.min(20, target - allPlaces.length),
     };
 
-    if (pageToken) {
-      // On paginated requests pageToken re-uses original params — don't resend locationBias
-      body.pageToken = pageToken;
-    } else if (locationBox) {
-      // locationBias (soft) instead of locationRestriction (hard) — returns more results
-      // and avoids cutting off businesses that sit exactly on a cell border
+    if (pageToken) body.pageToken = pageToken;
+
+    if (locationBox) {
       body.locationBias = {
         rectangle: {
           low: { latitude: locationBox.low.lat, longitude: locationBox.low.lng },
