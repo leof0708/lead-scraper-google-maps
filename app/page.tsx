@@ -245,14 +245,17 @@ export default function Home() {
 
     setAreaProgress({ current: 0, total: cells.length });
 
+    // Track per-city count so target is per city, not global
+    let cityCount = 0;
+
     for (let i = 0; i < cells.length; i++) {
       if (abortRef.current) break;
-      if (accumulated.length >= target) break;
+      if (cityCount >= target) break;
 
       setPhase(`Searching area ${i + 1} of ${cells.length}…`);
       setAreaProgress({ current: i + 1, total: cells.length });
 
-      const needed = target - accumulated.length;
+      const needed = target - cityCount;
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -272,6 +275,7 @@ export default function Home() {
         if (!globalSeen.has(p.id)) {
           globalSeen.add(p.id);
           accumulated.push({ ...p, city });
+          cityCount++;
         }
       }
 
