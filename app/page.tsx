@@ -7,8 +7,10 @@ import { Cell } from "./api/areas/route";
 // ── Constants ────────────────────────────────────────────────────────────────
 const DB_KEY = "leads_db_v1";
 const USAGE_KEY = "api_usage_v1";
-const FREE_LIMIT = 5000;
-const WARN_AT = 4000;
+// Limit temporarily disabled — running on Google free credit.
+// To restore: set FREE_LIMIT back to 1000 (and WARN_AT to ~800).
+const FREE_LIMIT = Infinity;
+const WARN_AT = Infinity;
 
 // ── localStorage helpers ─────────────────────────────────────────────────────
 function loadDb(): Set<string> {
