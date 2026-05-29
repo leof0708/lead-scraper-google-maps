@@ -12,6 +12,20 @@ const USAGE_KEY = "api_usage_v1";
 const FREE_LIMIT = Infinity;
 const WARN_AT = Infinity;
 
+// Turn any API error payload into readable text. Vercel/platform errors come back
+// as objects ({ error: { code, message } }) which otherwise render as "[object Object]".
+function errText(e: unknown): string | undefined {
+  if (e == null) return undefined;
+  if (typeof e === "string") return e;
+  if (typeof e === "object") {
+    const o = e as { message?: unknown; code?: unknown };
+    if (typeof o.message === "string") return o.message;
+    if (typeof o.code === "string") return o.code;
+    try { return JSON.stringify(e); } catch { return String(e); }
+  }
+  return String(e);
+}
+
 // ── localStorage helpers ─────────────────────────────────────────────────────
 function loadDb(): Set<string> {
   try {
@@ -220,7 +234,7 @@ export default function Home() {
       body: JSON.stringify({ businessType, location: city, maxLeads: target }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Search failed");
+    if (!res.ok) throw new Error(errText(data.error) ?? "Search failed");
     usageRef.calls += data.apiCallsMade;
     return (data.places as Place[]).map((p) => ({ ...p, city }));
   }
@@ -240,7 +254,7 @@ export default function Home() {
       body: JSON.stringify({ location: city, maxLeads: target }),
     });
     const areasData = await areasRes.json();
-    if (!areasRes.ok) throw new Error(areasData.error ?? "Could not get city areas");
+    if (!areasRes.ok) throw new Error(errText(areasData.error) ?? "Could not get city areas");
 
     const cells: Cell[] = areasData.cells;
     if (areasData.radiusKm) setSearchRadiusKm(areasData.radiusKm);
@@ -269,7 +283,7 @@ export default function Home() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? `Search failed on area ${i + 1}`);
+      if (!res.ok) throw new Error(errText(data.error) ?? `Search failed on area ${i + 1}`);
 
       usageRef.calls += data.apiCallsMade;
 

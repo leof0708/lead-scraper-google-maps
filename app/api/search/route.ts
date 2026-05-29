@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+// Allow up to 60s — large grids paginate Google 3× per area and can exceed
+// the default function timeout, which previously surfaced as "[object Object]".
+export const maxDuration = 60;
+
 const PLACES_API_URL = "https://places.googleapis.com/v1/places:searchText";
 
 const FIELD_MASK = [
